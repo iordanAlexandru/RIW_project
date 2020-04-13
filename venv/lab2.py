@@ -1,11 +1,24 @@
 import os
 import csv
 import glob
+import re
 import collections
-PATH='test-files/'
+from collections import defaultdict
+
+PATH = 'test-files/'
 import json
+from glob import glob
 from nltk.stem import PorterStemmer
+import pymongo
+from pymongo import MongoClient
+import datetime
+import pprint
 from nltk.tokenize import sent_tokenize, word_tokenize
+import collections
+
+
+def makehash():
+    return collections.defaultdict(makehash)
 
 
 def Porter_filter_list(word_list):
@@ -13,8 +26,8 @@ def Porter_filter_list(word_list):
     stopwords = []
     for w in word_list:
         stopwords.append(ps.stem(w))
-    print(stopwords)
     return stopwords
+
 
 def Porter_filter(word):
     ps = PorterStemmer()
@@ -28,33 +41,11 @@ def stopwords_and_exceptions():
     f.close()
     return stopwords
 
+
 def read_from_dir(PATH):
-    d= dict()
+    d = dict()
     stopwords = stopwords_and_exceptions()
     for filename in glob.glob(os.path.join(PATH, '*.txt')):
-        with open(filename, encoding="latin1") as f:
-            letter = f.read(1).lower()
-            word = ''
-            full_word = ''
-            while letter:
-                if letter >='a' and letter <='z' or letter== "'" :
-                    word += letter
-                elif letter == ' ' or '\n' or '\t':
-                    full_word= word
-                    word=''
-                    if full_word in d and full_word not in stopwords:
-                        d[full_word] = d[full_word] + 1
-                    elif full_word not in stopwords:
-                        d[full_word]=1
-                    full_word=''
-                letter = f.read(1).lower()
-    return d
-
-
-def read_one_file_from_dir(root_dir, stopwords):
-    d= dict()
-    directory = os.path.normpath(root_dir)
-    for filename in glob.glob(directory):
         with open(filename, encoding="latin1") as f:
             letter = f.read(1).lower()
             word = ''
@@ -65,14 +56,43 @@ def read_one_file_from_dir(root_dir, stopwords):
                 elif letter == ' ' or '\n' or '\t':
                     full_word = word
                     word = ''
-                    parsed_word = Porter_filter(full_word)
-                    if parsed_word in d and parsed_word not in stopwords:
-                        d[parsed_word] = d[parsed_word] + 1
-                    elif parsed_word not in stopwords:
-                        d[parsed_word] = 1
+                    if full_word in d and full_word not in stopwords:
+                        d[full_word] = d[full_word] + 1
+                    elif full_word not in stopwords:
+                        d[full_word] = 1
                     full_word = ''
                 letter = f.read(1).lower()
-        return d
+    return d
+
+
+dict_ultra_final = {'path': '', 'words': {'word': {}}}
+
+
+def read_one_file_from_dir(root_dir, stopwords):
+    d = {}
+    directory = os.path.normpath(root_dir)
+    for filename in glob.glob(directory):
+        with open(filename, encoding="latin1") as f:
+            letter = f.read(1).lower()
+            word = ''
+            full_word = ''
+            while letter:
+                if letter >= 'a' and letter <= 'z' or letter == "'":
+                    word += letter
+                elif letter == ' ' or letter == '\n' or letter == '\t':
+                    full_word = word
+                    word = ''
+                    parsed_word = Porter_filter(full_word)
+                    if parsed_word not in stopwords:
+                        if parsed_word in d:
+                            d[parsed_word] = d[parsed_word] + 1
+                        else:
+                            d[parsed_word] = 1
+                    full_word = ''
+                letter = f.read(1).lower()
+        dict_ultra_final['words'] = d
+    return d
+
 
 def save_idx_file():
     root_dir = "C:\\Users\\Ali-PC\\PycharmProjects\\RIW_project\\venv\\test-files"
@@ -82,45 +102,47 @@ def save_idx_file():
         for file_name in files:
             rel_dir = os.path.abspath(root)
             rel_file = os.path.join(rel_dir, file_name)
-            file_list= file_list + str(rel_file) + '\n'
-    print(file_list)
+            file_list = file_list + str(rel_file) + '\n'
     with open("idx_file.txt", "w") as output:
         output.write(file_list)
 
-def parse_idx_file():
+
+def parse_idx_file(idx_direct_collection):
     data = []
     start = 0
-    index_direct ={}
+    index_direct = {}
     stopwords = stopwords_and_exceptions()
     stopwords = Porter_filter_list(stopwords)
+    mg_dict = dict_ultra_final
+    dict_final = {}
     with open('idx_file.txt') as f:
         for line in f:
             line = line.rstrip()
+            path = line.split('.')
             data.append(line)
             d = read_one_file_from_dir(data[start], stopwords)
-            index_direct[line] = d
+            dict_final[path[0]] = d
+            mg_dict['path'] = path[0]
+            # print(dict_ultra_final)
+            # idx_direct_coll.insert_one(dict_ultra_final.copy()).inserted_id
             start += 1
-    # for key in list(index_direct.keys()):
-    #     print(key, ":", index_direct[key])
-    with open("idx_direct.json", "w") as output:
-        output.write(json.dumps(index_direct))
 
+    # with open("idx_direct.json", "w") as output:
+    #     output.write(json.dumps(index_direct))
 
-def CountFrequency(arr):
-    return collections.Counter(arr)
 
 def complex_data_structures():
     data = []
-    expr=[]
-    exc=[]
-    expr_OR=[]
-    i=0
+    expr = []
+    exc = []
+    expr_OR = []
+    i = 0
     with open('read_complex.txt') as f:
         for line in f:
             if i == 0:
                 line = line.rstrip()
                 expr.append(line)
-                i=i+1
+                i = i + 1
             line = line.rstrip()
             if line == '+':
                 line = next(f)
@@ -135,22 +157,29 @@ def complex_data_structures():
                 line = line.rstrip()
                 expr_OR.append(line)
 
-    cnt=0
-    dict_final = []
+    cnt = 0
+    path_list = []
+    dict_index_invers = {'word': '', 'details': {'path': [], 'nr_ap': 0}}
+    list_word = []
+    list_path = []
+    nr_ap = []
+
+    the_list = []
     expr_final = []
+
     if len(expr) >= len(expr_OR):
-        expr_final=expr
+        expr_final = expr
     else:
         expr_final = expr_OR
     with open("idx_direct.json") as json_file:
-        arr=[]
+        arr = []
         flag = -1
         dict_nou = []
         data = json.load(json_file)
         cuv_obl_list = []
         cuv_opt_list = []
         cuv_exc = 'zzzzzzz'
-        cuv_opt='zzzzzzzzz'
+        cuv_opt = 'zzzzzzzzz'
         for key in data.keys():
             while cnt < len(expr_final):
                 if cnt < expr.__len__():
@@ -159,30 +188,146 @@ def complex_data_structures():
                     cuv_exc = exc[cnt]
                 if cnt < expr_OR.__len__():
                     cuv_opt = expr_OR[cnt]
+
                 cnt = cnt + 1
                 flag = 0
-                cuv_oblig= Porter_filter(cuv_oblig)
+                cuv_oblig = Porter_filter(cuv_oblig)
                 cuv_opt = Porter_filter(cuv_opt)
                 cuv_exc = Porter_filter(cuv_exc)
-                for key_cuv in data[key]:
-                    if key_cuv == cuv_oblig and cuv_oblig not in cuv_obl_list:
-                        cuv_obl_list.append(cuv_oblig)
-                    if key_cuv == cuv_opt and cuv_opt not in cuv_opt_list:
-                        cuv_opt_list.append(cuv_opt)
-                    if key_cuv == cuv_exc:
-                        flag=1
-                        break
-                if len(cuv_obl_list) == len(expr) and len(cuv_opt_list)<= len(expr_OR) and key not in dict_final:
-                    dict_final.append(key)
-            cnt = 0
-            cuv_obl_list=[]
-            cuv_opt_list=[]
-    print(dict_final)
 
+                for key_cuv in data[key]:
+                    if key_cuv == cuv_opt or key_cuv == cuv_oblig:
+                        if cuv_oblig not in cuv_obl_list:
+                            cuv_obl_list.append(cuv_oblig)
+                        if cuv_opt not in cuv_opt_list:
+                            cuv_opt_list.append(cuv_opt)
+                    if key_cuv == cuv_exc:
+                        flag = 1
+                        break
+                if len(cuv_obl_list) == len(expr) and len(cuv_opt_list) <= len(expr_OR) and key not in path_list:
+                    path_list.append(key)
+            cnt = 0
+            cuv_obl_list = []
+            cuv_opt_list = []
+    print(path_list)
+
+
+# index invers
+
+def index_invers():
+    data = []
+    expr = []
+    exc = []
+    expr_OR = []
+    i = 0
+    path_list = []
+    with open('read_complex.txt') as f:
+        for line in f:
+            if i == 0:
+                line = line.rstrip()
+                expr.append(line)
+                i = i + 1
+            line = line.rstrip()
+            if line == '+':
+                line = next(f)
+                line = line.rstrip()
+                expr.append(line)
+            if line == '|':
+                line = next(f)
+                line = line.rstrip()
+                expr_OR.append(line)
+
+    cnt = 0
+    nr_ap = []
+    the_list = []
+    expr_final = []
+    dict_verif = []
+    dictionar_nr_ap = {}
+    dict_path = {}
+    dict_path2 = {}
+    path_list = []
+    path_list.append([])
+    path_list.append([])
+    if len(expr) >= len(expr_OR):
+        expr_final = expr
+    else:
+        expr_final = expr_OR
+    with open("idx_direct.json") as json_file:
+        arr = []
+        flag = -1
+        dict_nou = []
+        data = json.load(json_file)
+        cuv_obl_list = []
+        cuv_opt_list = []
+        cuv_exc = 'zzzzzzz'
+        cuv_opt = 'zzzzzzzzz'
+        for key in data:
+            while(cnt< len(expr_final)):
+                flag = 0
+                if cnt < expr_OR.__len__():
+                    cuv_opt = expr_OR[cnt]
+                if cnt < expr.__len__():
+                    cuv_oblig = expr[cnt]
+                cnt += 1
+                cuv_oblig = Porter_filter(cuv_oblig)
+                cuv_opt = Porter_filter(cuv_opt)
+                for key_cuv in data[key]: # c:users..22.txt { bla_bla : 520, lol: 120, .....
+                    if key_cuv == cuv_opt or key_cuv == cuv_oblig:
+                        if key_cuv in dictionar_nr_ap:
+                            dictionar_nr_ap[key_cuv] += data[key][key_cuv]
+                        else:
+                            dictionar_nr_ap[key_cuv] = data[key][key_cuv]
+                        if key not in dict_path:
+                            dict_path[key_cuv] = key
+            cnt = 0
+            cuv_obl_list = []
+            cuv_opt_list = []
+        for key in data:
+            while (cnt < len(expr_final)):
+                flag = 0
+                if cnt < expr_OR.__len__():
+                    cuv_opt = expr_OR[cnt]
+                if cnt < expr.__len__():
+                    cuv_oblig = expr[cnt]
+                cnt += 1
+                cuv_oblig = Porter_filter(cuv_oblig)
+                cuv_opt = Porter_filter(cuv_opt)
+                for key_cuv in data[key]:
+                    if key_cuv == cuv_opt or key_cuv == cuv_oblig:
+                        dict_index_invers = {'word': key_cuv,
+                                             'details': {'path': dict_path[key_cuv], 'nr_ap': dictionar_nr_ap[key_cuv]}}
+                        if dict_index_invers not in the_list:
+                            the_list.append(dict_index_invers)
+            cnt = 0
+            cuv_obl_list = []
+            cuv_opt_list = []
+    pprint.pprint(the_list)
+
+
+# lab5
+
+# def (word):
+
+
+# cos function applied to words
+def cos_relevance(collection):
+    parsed_words = []
+    with open('prop.txt', 'r') as file:
+        for line in file:
+            for word in line.split():
+                parsed_words.append(Porter_filter(word))
+    for word in parsed_words:
+        collection.find(word)
 
 
 if __name__ == "__main__":
-    #save_idx_file()
-    #parse_idx_file()
-    complex_data_structures()
+    client = MongoClient("mongodb+srv://admin:admin@cluster0-yr7sj.mongodb.net/test?retryWrites=true&w=majority")
 
+    db = client['riw_proj']
+    idx_direct_coll = db['idx_direct']
+    # save_idx_file()
+    # parse_idx_file(idx_direct_coll)
+    # complex_data_structures()
+    # for word in idx_direct_coll.find({"words.{%regex":{ "$gte": 0, "$lt": 100 }}):
+    #     pprint.pprint(word)
+    index_invers()
