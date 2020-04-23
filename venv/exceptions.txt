@@ -5,3 +5,4 @@ ted
 brb
 paws
 swot
+both
