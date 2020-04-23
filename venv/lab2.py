@@ -15,11 +15,7 @@ import datetime
 import pprint
 from nltk.tokenize import sent_tokenize, word_tokenize
 import collections
-
-
-def makehash():
-    return collections.defaultdict(makehash)
-
+from math import sqrt
 
 def Porter_filter_list(word_list):
     ps = PorterStemmer()
@@ -33,45 +29,27 @@ def Porter_filter(word):
     ps = PorterStemmer()
     return ps.stem(word)
 
+def exceptions_filter():
+    f = open('exceptions.txt','r')
+    exceptions = f.readlines()
+    exceptions = [word.lower().strip() for word in exceptions]
+    f.close()
+    return exceptions
 
-def stopwords_and_exceptions():
+
+def stopwords_filter():
     f = open('stopwords.txt', 'r')
     stopwords = f.readlines()
     stopwords = [word.lower().strip() for word in stopwords]
     f.close()
     return stopwords
 
-
-def read_from_dir(PATH):
-    d = dict()
-    stopwords = stopwords_and_exceptions()
-    for filename in glob.glob(os.path.join(PATH, '*.txt')):
-        with open(filename, encoding="latin1") as f:
-            letter = f.read(1).lower()
-            word = ''
-            full_word = ''
-            while letter:
-                if letter >= 'a' and letter <= 'z' or letter == "'":
-                    word += letter
-                elif letter == ' ' or '\n' or '\t':
-                    full_word = word
-                    word = ''
-                    if full_word in d and full_word not in stopwords:
-                        d[full_word] = d[full_word] + 1
-                    elif full_word not in stopwords:
-                        d[full_word] = 1
-                    full_word = ''
-                letter = f.read(1).lower()
-    return d
-
-
 dict_ultra_final = {'path': '', 'words': {'word': {}}}
 
-
-def read_one_file_from_dir(root_dir, stopwords):
+def read_one_file_from_dir(root_dir, stopwords, exceptions):
     d = {}
     directory = os.path.normpath(root_dir)
-    for filename in glob.glob(directory):
+    for filename in glob(directory):
         with open(filename, encoding="latin1") as f:
             letter = f.read(1).lower()
             word = ''
@@ -83,6 +61,11 @@ def read_one_file_from_dir(root_dir, stopwords):
                     full_word = word
                     word = ''
                     parsed_word = Porter_filter(full_word)
+                    if parsed_word in exceptions:
+                        if parsed_word in d:
+                            d[parsed_word] = d[parsed_word] + 1
+                        else:
+                            d[parsed_word] = 1
                     if parsed_word not in stopwords:
                         if parsed_word in d:
                             d[parsed_word] = d[parsed_word] + 1
@@ -111,7 +94,9 @@ def parse_idx_file(idx_direct_collection):
     data = []
     start = 0
     index_direct = {}
-    stopwords = stopwords_and_exceptions()
+    exceptions = exceptions_filter()
+    exceptions = Porter_filter_list(exceptions)
+    stopwords = stopwords_filter()
     stopwords = Porter_filter_list(stopwords)
     mg_dict = dict_ultra_final
     dict_final = {}
@@ -120,106 +105,26 @@ def parse_idx_file(idx_direct_collection):
             line = line.rstrip()
             path = line.split('.')
             data.append(line)
-            d = read_one_file_from_dir(data[start], stopwords)
+            d = read_one_file_from_dir(data[start], stopwords, exceptions)
             dict_final[path[0]] = d
             mg_dict['path'] = path[0]
-            # print(dict_ultra_final)
-            # idx_direct_coll.insert_one(dict_ultra_final.copy()).inserted_id
+            #print(dict_ultra_final)
+            #idx_direct_coll.insert_one(dict_ultra_final.copy()).inserted_id
             start += 1
 
     # with open("idx_direct.json", "w") as output:
     #     output.write(json.dumps(index_direct))
-
-
-def complex_data_structures():
-    data = []
-    expr = []
-    exc = []
-    expr_OR = []
-    i = 0
-    with open('read_complex.txt') as f:
-        for line in f:
-            if i == 0:
-                line = line.rstrip()
-                expr.append(line)
-                i = i + 1
-            line = line.rstrip()
-            if line == '+':
-                line = next(f)
-                line = line.rstrip()
-                expr.append(line)
-            if line == '-':
-                line = next(f)
-                line = line.rstrip()
-                exc.append(line)
-            if line == '|':
-                line = next(f)
-                line = line.rstrip()
-                expr_OR.append(line)
-
-    cnt = 0
-    path_list = []
-    dict_index_invers = {'word': '', 'details': {'path': [], 'nr_ap': 0}}
-    list_word = []
-    list_path = []
-    nr_ap = []
-
-    the_list = []
-    expr_final = []
-
-    if len(expr) >= len(expr_OR):
-        expr_final = expr
-    else:
-        expr_final = expr_OR
-    with open("idx_direct.json") as json_file:
-        arr = []
-        flag = -1
-        dict_nou = []
-        data = json.load(json_file)
-        cuv_obl_list = []
-        cuv_opt_list = []
-        cuv_exc = 'zzzzzzz'
-        cuv_opt = 'zzzzzzzzz'
-        for key in data.keys():
-            while cnt < len(expr_final):
-                if cnt < expr.__len__():
-                    cuv_oblig = expr[cnt]
-                if cnt < exc.__len__():
-                    cuv_exc = exc[cnt]
-                if cnt < expr_OR.__len__():
-                    cuv_opt = expr_OR[cnt]
-
-                cnt = cnt + 1
-                flag = 0
-                cuv_oblig = Porter_filter(cuv_oblig)
-                cuv_opt = Porter_filter(cuv_opt)
-                cuv_exc = Porter_filter(cuv_exc)
-
-                for key_cuv in data[key]:
-                    if key_cuv == cuv_opt or key_cuv == cuv_oblig:
-                        if cuv_oblig not in cuv_obl_list:
-                            cuv_obl_list.append(cuv_oblig)
-                        if cuv_opt not in cuv_opt_list:
-                            cuv_opt_list.append(cuv_opt)
-                    if key_cuv == cuv_exc:
-                        flag = 1
-                        break
-                if len(cuv_obl_list) == len(expr) and len(cuv_opt_list) <= len(expr_OR) and key not in path_list:
-                    path_list.append(key)
-            cnt = 0
-            cuv_obl_list = []
-            cuv_opt_list = []
-    print(path_list)
-
-
 # index invers
+boolean_list = []
 
-def index_invers():
+
+def index_invers(idx_invers_coll):
     data = []
     expr = []
     exc = []
     expr_OR = []
     i = 0
+    calcul_cos = 0
     path_list = []
     with open('read_complex.txt') as f:
         for line in f:
@@ -236,34 +141,23 @@ def index_invers():
                 line = next(f)
                 line = line.rstrip()
                 expr_OR.append(line)
-
     cnt = 0
-    nr_ap = []
-    the_list = []
     expr_final = []
-    dict_verif = []
     dictionar_nr_ap = {}
     dict_path = {}
-    dict_path2 = {}
-    path_list = []
-    path_list.append([])
-    path_list.append([])
+    the_list=[]
     if len(expr) >= len(expr_OR):
         expr_final = expr
     else:
         expr_final = expr_OR
     with open("idx_direct.json") as json_file:
-        arr = []
-        flag = -1
-        dict_nou = []
         data = json.load(json_file)
         cuv_obl_list = []
         cuv_opt_list = []
-        cuv_exc = 'zzzzzzz'
-        cuv_opt = 'zzzzzzzzz'
+        cuv_exc = ''
+        cuv_opt = ''
         for key in data:
-            while(cnt< len(expr_final)):
-                flag = 0
+            while(cnt < len(expr_final)):
                 if cnt < expr_OR.__len__():
                     cuv_opt = expr_OR[cnt]
                 if cnt < expr.__len__():
@@ -277,14 +171,16 @@ def index_invers():
                             dictionar_nr_ap[key_cuv] += data[key][key_cuv]
                         else:
                             dictionar_nr_ap[key_cuv] = data[key][key_cuv]
-                        if key not in dict_path:
-                            dict_path[key_cuv] = key
+                        if key_cuv not in dict_path:
+                            dict_path[key_cuv] = []
+                        if key not in dict_path[key_cuv]:
+                            dict_path[key_cuv].append(key)
+
             cnt = 0
             cuv_obl_list = []
             cuv_opt_list = []
         for key in data:
             while (cnt < len(expr_final)):
-                flag = 0
                 if cnt < expr_OR.__len__():
                     cuv_opt = expr_OR[cnt]
                 if cnt < expr.__len__():
@@ -297,20 +193,27 @@ def index_invers():
                         dict_index_invers = {'word': key_cuv,
                                              'details': {'path': dict_path[key_cuv], 'nr_ap': dictionar_nr_ap[key_cuv]}}
                         if dict_index_invers not in the_list:
+                            #idx_invers_coll.insert_one(dict_index_invers.copy()).inserted_id
                             the_list.append(dict_index_invers)
+                            if dict_path[key_cuv] not in boolean_list:
+                                boolean_list.append(dict_path[key_cuv])
+
             cnt = 0
             cuv_obl_list = []
             cuv_opt_list = []
-    pprint.pprint(the_list)
+
+    return the_list
 
 
-# lab5
-
-# def (word):
-
+def boolean_search(bool_list = boolean_list):
+    final_list = []
+    for item in bool_list:
+        if item not in final_list:
+            final_list = final_list + item
+    return set(final_list)
 
 # cos function applied to words
-def cos_relevance(collection):
+def cos_relevance(path_list, final_list):
     parsed_words = []
     with open('prop.txt', 'r') as file:
         for line in file:
@@ -325,9 +228,11 @@ if __name__ == "__main__":
 
     db = client['riw_proj']
     idx_direct_coll = db['idx_direct']
+    idx_invers_coll = db['idx_invers']
     # save_idx_file()
-    # parse_idx_file(idx_direct_coll)
+    #the_list = parse_idx_file(idx_direct_coll)
     # complex_data_structures()
-    # for word in idx_direct_coll.find({"words.{%regex":{ "$gte": 0, "$lt": 100 }}):
-    #     pprint.pprint(word)
-    index_invers()
+    index_invers(idx_invers_coll)
+
+    list = boolean_search()
+    print(list)
